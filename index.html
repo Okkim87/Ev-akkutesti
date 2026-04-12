@@ -1,22 +1,66 @@
 <!DOCTYPE html>
 <html lang="fi">
 <head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EV Akkuraportti PRO+</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
-body { font-family: Arial; background:#0d0d0d; color:white; text-align:center; padding:20px;}
-.container { max-width:400px; margin:auto;}
-input,button { width:100%; padding:15px; margin:10px 0; font-size:18px; border-radius:10px; border:none;}
-input { background:#1c1c1c; color:white;}
-button { background:#00c853; color:white;}
-.card { background:#1a1a1a; padding:20px; border-radius:15px; margin-top:20px;}
-.bar { height:20px; background:#333; border-radius:10px; overflow:hidden;}
-.fill { height:100%; width:0%; background:green;}
-.big { font-size:40px;}
+body {
+  background:#0d0d0d;
+  color:white;
+  font-family:sans-serif;
+  text-align:center;
+}
+
+.container {
+  max-width:400px;
+  margin:auto;
+}
+
+input {
+  width:90%;
+  padding:15px;
+  margin:10px;
+  font-size:18px;
+  border-radius:10px;
+  border:none;
+  background:#1c1c1c;
+  color:white;
+}
+
+button {
+  width:90%;
+  padding:15px;
+  margin:10px;
+  font-size:18px;
+  border-radius:10px;
+  border:none;
+  background:#4caf50;
+  color:white;
+}
+
+.card {
+  background:#1c1c1c;
+  padding:20px;
+  border-radius:15px;
+  margin-top:20px;
+}
+
+.bar {
+  height:20px;
+  background:#333;
+  border-radius:10px;
+  overflow:hidden;
+}
+
+.fill {
+  height:100%;
+  width:0%;
+  background:#4caf50;
+}
 </style>
 </head>
 
@@ -24,21 +68,25 @@ button { background:#00c853; color:white;}
 
 <div class="container">
 
-<h1>🔋 EV Akkuraportti PRO+</h1>
+<h1>🔋 EV Akkuraportti +</h1>
 
-<input id="max" placeholder="MAX (4.09)">
-<input id="min" placeholder="MIN (4.06)">
+<input id="max" placeholder="Max jännite (esim 4.08)">
+<input id="min" placeholder="Min jännite (esim 4.06)">
 
 <button onclick="laske()">Analysoi</button>
 <button onclick="tallenna()">💾 Tallenna</button>
 <button onclick="teePDF()">📄 PDF</button>
-<button onclick="obd()">🔵 OBD (demo)</button>
+<button onclick="obdDemo()">🔵 OBD (demo)</button>
 
 <div class="card">
-  <div id="status">-</div>
-  <div class="big" id="soh">--%</div>
-  <div class="bar"><div id="fill" class="fill"></div></div>
-  <div id="details"></div>
+  <h2 id="status">-</h2>
+  <h1 id="soh">--%</h1>
+
+  <div class="bar">
+    <div class="fill" id="fill"></div>
+  </div>
+
+  <p id="details"></p>
 </div>
 
 <canvas id="chart"></canvas>
@@ -46,74 +94,101 @@ button { background:#00c853; color:white;}
 </div>
 
 <script>
-let history = JSON.parse(localStorage.getItem("akkuData") || "[]");
+let historyData = JSON.parse(localStorage.getItem("evdata") || "[]");
 
 function laske(){
- let max=parseFloat(maxEl.value);
- let min=parseFloat(minEl.value);
- if(isNaN(max)||isNaN(min)) return;
+ let max = parseFloat(document.getElementById("max").value);
+ let min = parseFloat(document.getElementById("min").value);
 
- let delta=max-min;
- let soh=100-(delta*1200);
- soh=Math.max(0,Math.min(100,soh));
+ if(isNaN(max)||isNaN(min)) {
+   alert("Syötä arvot");
+   return;
+ }
 
- let status=soh>90?"Erinomainen":soh>75?"Hyvä":soh>60?"Kohtalainen":"Heikko";
- let color=soh>90?"#00e676":soh>75?"#aeea00":soh>60?"#ffd600":"#ff1744";
+ let delta = max - min;
+ let soh = 100 - (delta * 1200);
+ soh = Math.max(0, Math.min(100, soh));
 
- document.getElementById("soh").innerText=soh.toFixed(1)+"%";
- document.getElementById("status").innerText=status;
+ let status = soh>90?"Erinomainen":soh>75?"Hyvä":soh>60?"Kohtalainen":"Heikko";
+ let color = soh>90?"#00e676":soh>75?"#aeea00":soh>60?"#ffd600":"#ff1744";
 
- let fill=document.getElementById("fill");
- fill.style.width=soh+"%";
- fill.style.background=color;
+ document.getElementById("soh").innerText = soh.toFixed(1)+"%";
+ document.getElementById("status").innerText = status;
 
- document.getElementById("details").innerHTML=
- "DELTA: "+delta.toFixed(3)+" V";
+ let fill = document.getElementById("fill");
+ fill.style.width = soh+"%";
+ fill.style.background = color;
 
- window.lastData={soh,delta,date:new Date().toLocaleTimeString()};
+ document.getElementById("details").innerText =
+ "DELTA: " + delta.toFixed(3) + " V";
+
+ window.lastData = {
+   soh:soh,
+   delta:delta,
+   date:new Date().toLocaleTimeString()
+ };
 }
 
 function tallenna(){
- if(!window.lastData) return;
- history.push(window.lastData);
- localStorage.setItem("akkuData",JSON.stringify(history));
- piirra();
+ if(!window.lastData){
+   alert("Laske ensin!");
+   return;
+ }
+
+ historyData.push(window.lastData);
+ localStorage.setItem("evdata", JSON.stringify(historyData));
+ drawChart();
 }
 
-function piirra(){
- let ctx=document.getElementById("chart");
- let labels=history.map(x=>x.date);
- let data=history.map(x=>x.soh);
+function drawChart(){
+ let ctx = document.getElementById("chart");
 
- new Chart(ctx,{
-   type:'line',
+ if(window.chart) window.chart.destroy();
+
+ window.chart = new Chart(ctx, {
+   type:"line",
    data:{
-     labels:labels,
+     labels: historyData.map(d=>d.date),
      datasets:[{
-       label:'SOH %',
-       data:data
+       label:"SOH %",
+       data: historyData.map(d=>d.soh)
      }]
    }
  });
 }
 
 function teePDF(){
- if(!window.lastData) return;
- const { jsPDF } = window.jspdf;
- let doc=new jsPDF();
+ if(!window.lastData){
+   alert("Laske ensin!");
+   return;
+ }
 
- doc.text("EV Akkuraportti",20,20);
- doc.text("SOH: "+lastData.soh.toFixed(1)+"%",20,40);
- doc.text("DELTA: "+lastData.delta.toFixed(3),20,50);
+ let content = `
+ EV AKKURAPORTTI
 
- doc.save("akku_raportti.pdf");
+ SOH: ${window.lastData.soh.toFixed(1)}%
+ DELTA: ${window.lastData.delta.toFixed(3)} V
+ Aika: ${window.lastData.date}
+ `;
+
+ let blob = new Blob([content], {type:"text/plain"});
+ let a = document.createElement("a");
+ a.href = URL.createObjectURL(blob);
+ a.download = "ev_raportti.txt";
+ a.click();
 }
 
-function obd(){
- alert("Tähän voidaan liittää OBD Bluetooth myöhemmin 🔵");
+function obdDemo(){
+ let max = 4.1 + Math.random()*0.02;
+ let min = 4.05 + Math.random()*0.02;
+
+ document.getElementById("max").value = max.toFixed(3);
+ document.getElementById("min").value = min.toFixed(3);
+
+ laske();
 }
 
-piirra();
+drawChart();
 </script>
 
 </body>
