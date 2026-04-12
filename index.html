@@ -1,1 +1,38 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EV Akkuraportti</title>
+<style>
+body { font-family: Arial; background:#111; color:white; text-align:center; padding:20px;}
+input,button { width:100%; padding:15px; margin:10px 0; font-size:18px; border-radius:8px; border:none;}
+button { background:#00c853; color:white;}
+.good{color:#00e676;} .ok{color:#ffd600;} .bad{color:#ff1744;}
+</style>
+</head>
+<body>
 
+<h1>🔋 EV Akkuraportti</h1>
+
+<input id="max" placeholder="MAX (4.09)">
+<input id="min" placeholder="MIN (4.06)">
+<button onclick="laske()">Laske</button>
+
+<div id="tulos"></div>
+
+<script>
+function laske(){
+ let max=parseFloat(maxEl.value);
+ let min=parseFloat(minEl.value);
+ if(isNaN(max)||isNaN(min)){tulos.innerHTML="Syötä arvot";return;}
+ let d=max-min;
+ let soh=100-(d*1000);
+ soh=Math.max(0,Math.min(100,soh));
+ let s=soh>90?"Hyvä":soh>70?"OK":"Huono";
+ let c=soh>90?"good":soh>70?"ok":"bad";
+ tulos.innerHTML=`DELTA ${d.toFixed(3)}<br>SOH ${soh.toFixed(1)}%<br><span class=${c}>${s}</span>`;
+}
+</script>
+
+</body>
+</html>
