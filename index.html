@@ -6,14 +6,16 @@
 
 <title>EV Akkuraportti PRO+</title>
 
-<!-- Chart -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<!-- PDF FIXED -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
-body{background:#0d0d0d;color:white;font-family:sans-serif;text-align:center;}
+body{
+ background:#0d0d0d;
+ color:white;
+ font-family:sans-serif;
+ text-align:center;
+}
 .container{max-width:400px;margin:auto;}
 
 input{
@@ -24,23 +26,27 @@ input{
 
 button{
  width:90%;padding:15px;margin:10px;
- font-size:18px;border-radius:10px;
+ font-size:18px;border-radius:12px;
  border:none;background:#4caf50;color:white;
 }
 
 .card{
- background:#1c1c1c;padding:20px;
- border-radius:15px;margin-top:20px;
+ background:#1c1c1c;
+ padding:20px;
+ border-radius:15px;
+ margin-top:20px;
 }
 
 .bar{
  height:20px;background:#333;
- border-radius:10px;overflow:hidden;
+ border-radius:10px;
+ overflow:hidden;
 }
 
 .fill{
  height:100%;width:0%;
  background:#4caf50;
+ transition:0.4s;
 }
 </style>
 </head>
@@ -107,7 +113,9 @@ function laske(){
  window.lastData = {
    soh:soh,
    delta:delta,
-   date:new Date().toLocaleString()
+   date:new Date().toLocaleString(),
+   status:status,
+   color:color
  };
 }
 
@@ -137,30 +145,77 @@ function drawChart(){
      labels: historyData.map(d=>d.date),
      datasets:[{
        label:"SOH %",
-       data: historyData.map(d=>d.soh)
+       data: historyData.map(d=>d.soh),
+       borderColor:"#4caf50",
+       tension:0.3
      }]
+   },
+   options:{
+     plugins:{legend:{labels:{color:"white"}}},
+     scales:{
+       x:{ticks:{color:"white"}},
+       y:{ticks:{color:"white"},min:0,max:100}
+     }
    }
  });
 }
 
-// ===== PDF =====
+// ===== AVILOO-TYYLINEN PDF =====
 function teePDF(){
  if(!window.lastData){
    alert("Laske ensin!");
    return;
  }
 
- const doc = new window.jspdf.jsPDF();
+ const { jsPDF } = window.jspdf;
+ const doc = new jsPDF();
 
+ let d = window.lastData;
+
+ // HEADER
+ doc.setFillColor(20,20,20);
+ doc.rect(0,0,210,30,"F");
+
+ doc.setTextColor(255,255,255);
  doc.setFontSize(18);
- doc.text("EV AKKURAPORTTI", 20, 20);
+ doc.text("EV AKKURAPORTTI PRO+", 20,20);
 
+ // SOH ISO
+ doc.setTextColor(0,0,0);
+ doc.setFontSize(40);
+ doc.text(d.soh.toFixed(1)+"%", 20,60);
+
+ // STATUS
+ let c = hexToRgb(d.color);
+ doc.setTextColor(c.r,c.g,c.b);
+ doc.setFontSize(16);
+ doc.text(d.status.toUpperCase(), 20,75);
+
+ // BAR
+ doc.setDrawColor(200,200,200);
+ doc.rect(20,85,170,10);
+
+ doc.setFillColor(c.r,c.g,c.b);
+ doc.rect(20,85,(d.soh/100)*170,10,"F");
+
+ // DATA
+ doc.setTextColor(0,0,0);
  doc.setFontSize(12);
- doc.text("SOH: " + window.lastData.soh.toFixed(1) + "%", 20, 40);
- doc.text("DELTA: " + window.lastData.delta.toFixed(3) + " V", 20, 50);
- doc.text("Aika: " + window.lastData.date, 20, 60);
 
- doc.save("EV_raportti.pdf");
+ doc.text("DELTA: "+d.delta.toFixed(3)+" V", 20,110);
+ doc.text("AIKA: "+d.date, 20,120);
+
+ doc.save("EV_Akkuraportti_PRO.pdf");
+}
+
+// HEX → RGB
+function hexToRgb(hex){
+ let bigint = parseInt(hex.replace("#",""),16);
+ return {
+   r:(bigint>>16)&255,
+   g:(bigint>>8)&255,
+   b:bigint&255
+ };
 }
 
 // ===== OBD DEMO =====
