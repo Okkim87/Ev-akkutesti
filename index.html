@@ -1,79 +1,22 @@
-
 <!DOCTYPE html>
 <html lang="fi">
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EV Akkuraportti PRO</title>
+<title>EV Akkuraportti PRO+</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
-body {
-  font-family: Arial;
-  background: #0d0d0d;
-  color: white;
-  text-align: center;
-  padding: 20px;
-}
-
-.container {
-  max-width: 400px;
-  margin: auto;
-}
-
-h1 {
-  margin-bottom: 20px;
-}
-
-input {
-  width: 100%;
-  padding: 15px;
-  margin: 10px 0;
-  font-size: 18px;
-  border-radius: 10px;
-  border: none;
-  background: #1c1c1c;
-  color: white;
-}
-
-button {
-  width: 100%;
-  padding: 15px;
-  font-size: 18px;
-  background: linear-gradient(90deg,#00c853,#00e676);
-  border: none;
-  border-radius: 12px;
-  color: white;
-}
-
-.card {
-  background: #1a1a1a;
-  padding: 20px;
-  border-radius: 15px;
-  margin-top: 20px;
-}
-
-.bar {
-  height: 20px;
-  background: #333;
-  border-radius: 10px;
-  overflow: hidden;
-  margin-top: 10px;
-}
-
-.fill {
-  height: 100%;
-  width: 0%;
-  background: green;
-  transition: 0.5s;
-}
-
-.good { color: #00e676; }
-.ok { color: #ffd600; }
-.bad { color: #ff1744; }
-
-.big {
-  font-size: 40px;
-  margin: 10px 0;
-}
+body { font-family: Arial; background:#0d0d0d; color:white; text-align:center; padding:20px;}
+.container { max-width:400px; margin:auto;}
+input,button { width:100%; padding:15px; margin:10px 0; font-size:18px; border-radius:10px; border:none;}
+input { background:#1c1c1c; color:white;}
+button { background:#00c853; color:white;}
+.card { background:#1a1a1a; padding:20px; border-radius:15px; margin-top:20px;}
+.bar { height:20px; background:#333; border-radius:10px; overflow:hidden;}
+.fill { height:100%; width:0%; background:green;}
+.big { font-size:40px;}
 </style>
 </head>
 
@@ -81,74 +24,96 @@ button {
 
 <div class="container">
 
-<h1>🔋 EV Akkuraportti PRO</h1>
+<h1>🔋 EV Akkuraportti PRO+</h1>
 
-<input id="max" placeholder="MAX jännite (4.09)">
-<input id="min" placeholder="MIN jännite (4.06)">
+<input id="max" placeholder="MAX (4.09)">
+<input id="min" placeholder="MIN (4.06)">
 
-<button onclick="laske()">Analysoi akku</button>
+<button onclick="laske()">Analysoi</button>
+<button onclick="tallenna()">💾 Tallenna</button>
+<button onclick="teePDF()">📄 PDF</button>
+<button onclick="obd()">🔵 OBD (demo)</button>
 
 <div class="card">
-  <div id="status">Syötä arvot</div>
+  <div id="status">-</div>
   <div class="big" id="soh">--%</div>
-
-  <div class="bar">
-    <div id="fill" class="fill"></div>
-  </div>
-
+  <div class="bar"><div id="fill" class="fill"></div></div>
   <div id="details"></div>
 </div>
+
+<canvas id="chart"></canvas>
 
 </div>
 
 <script>
+let history = JSON.parse(localStorage.getItem("akkuData") || "[]");
+
 function laske(){
+ let max=parseFloat(maxEl.value);
+ let min=parseFloat(minEl.value);
+ if(isNaN(max)||isNaN(min)) return;
 
-  let max = parseFloat(document.getElementById("max").value);
-  let min = parseFloat(document.getElementById("min").value);
+ let delta=max-min;
+ let soh=100-(delta*1200);
+ soh=Math.max(0,Math.min(100,soh));
 
-  if (isNaN(max) || isNaN(min)) return;
+ let status=soh>90?"Erinomainen":soh>75?"Hyvä":soh>60?"Kohtalainen":"Heikko";
+ let color=soh>90?"#00e676":soh>75?"#aeea00":soh>60?"#ffd600":"#ff1744";
 
-  let delta = max - min;
+ document.getElementById("soh").innerText=soh.toFixed(1)+"%";
+ document.getElementById("status").innerText=status;
 
-  // Parempi SOH logiikka
-  let soh = 100 - (delta * 1200);
+ let fill=document.getElementById("fill");
+ fill.style.width=soh+"%";
+ fill.style.background=color;
 
-  soh = Math.max(0, Math.min(100, soh));
+ document.getElementById("details").innerHTML=
+ "DELTA: "+delta.toFixed(3)+" V";
 
-  let status = "";
-  let color = "";
-
-  if (soh > 90) {
-    status = "Erinomainen";
-    color = "#00e676";
-  } else if (soh > 75) {
-    status = "Hyvä";
-    color = "#aeea00";
-  } else if (soh > 60) {
-    status = "Kohtalainen";
-    color = "#ffd600";
-  } else {
-    status = "Heikko";
-    color = "#ff1744";
-  }
-
-  document.getElementById("soh").innerText = soh.toFixed(1) + "%";
-  document.getElementById("status").innerText = status;
-
-  let fill = document.getElementById("fill");
-  fill.style.width = soh + "%";
-  fill.style.background = color;
-
-  document.getElementById("details").innerHTML =
-    "DELTA: " + delta.toFixed(3) + " V<br>" +
-    "Erotus kertoo kennotasapainon.<br>" +
-    (delta < 0.01 ? "✔ Erinomainen tasapaino" :
-     delta < 0.02 ? "✔ Hyvä tasapaino" :
-     delta < 0.04 ? "⚠ Epätasapainoa" :
-     "❌ Huono tasapaino");
-
+ window.lastData={soh,delta,date:new Date().toLocaleTimeString()};
 }
+
+function tallenna(){
+ if(!window.lastData) return;
+ history.push(window.lastData);
+ localStorage.setItem("akkuData",JSON.stringify(history));
+ piirra();
+}
+
+function piirra(){
+ let ctx=document.getElementById("chart");
+ let labels=history.map(x=>x.date);
+ let data=history.map(x=>x.soh);
+
+ new Chart(ctx,{
+   type:'line',
+   data:{
+     labels:labels,
+     datasets:[{
+       label:'SOH %',
+       data:data
+     }]
+   }
+ });
+}
+
+function teePDF(){
+ if(!window.lastData) return;
+ const { jsPDF } = window.jspdf;
+ let doc=new jsPDF();
+
+ doc.text("EV Akkuraportti",20,20);
+ doc.text("SOH: "+lastData.soh.toFixed(1)+"%",20,40);
+ doc.text("DELTA: "+lastData.delta.toFixed(3),20,50);
+
+ doc.save("akku_raportti.pdf");
+}
+
+function obd(){
+ alert("Tähän voidaan liittää OBD Bluetooth myöhemmin 🔵");
+}
+
+piirra();
 </script>
 
 </body>
