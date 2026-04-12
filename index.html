@@ -3,64 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>EV Akkuraportti PRO+</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf"></script>
 
 <style>
-body {
-  background:#0d0d0d;
-  color:white;
-  font-family:sans-serif;
-  text-align:center;
-}
-
-.container {
-  max-width:400px;
-  margin:auto;
-}
-
-input {
-  width:90%;
-  padding:15px;
-  margin:10px;
-  font-size:18px;
-  border-radius:10px;
-  border:none;
-  background:#1c1c1c;
-  color:white;
-}
-
-button {
-  width:90%;
-  padding:15px;
-  margin:10px;
-  font-size:18px;
-  border-radius:10px;
-  border:none;
-  background:#4caf50;
-  color:white;
-}
-
-.card {
-  background:#1c1c1c;
-  padding:20px;
-  border-radius:15px;
-  margin-top:20px;
-}
-
-.bar {
-  height:20px;
-  background:#333;
-  border-radius:10px;
-  overflow:hidden;
-}
-
-.fill {
-  height:100%;
-  width:0%;
-  background:#4caf50;
-}
+body{background:#0d0d0d;color:white;font-family:sans-serif;text-align:center;}
+.container{max-width:400px;margin:auto;}
+input{width:90%;padding:15px;margin:10px;font-size:18px;border-radius:10px;border:none;background:#1c1c1c;color:white;}
+button{width:90%;padding:15px;margin:10px;font-size:18px;border-radius:10px;border:none;background:#4caf50;color:white;}
+.card{background:#1c1c1c;padding:20px;border-radius:15px;margin-top:20px;}
+.bar{height:20px;background:#333;border-radius:10px;overflow:hidden;}
+.fill{height:100%;width:0%;background:#4caf50;}
 </style>
 </head>
 
@@ -68,15 +24,15 @@ button {
 
 <div class="container">
 
-<h1>🔋 EV Akkuraportti +</h1>
+<h1>🔋 EV Akkuraportti PRO+</h1>
 
-<input id="max" placeholder="Max jännite (esim 4.08)">
-<input id="min" placeholder="Min jännite (esim 4.06)">
+<input id="max" placeholder="Max jännite (4.08)">
+<input id="min" placeholder="Min jännite (4.06)">
 
 <button onclick="laske()">Analysoi</button>
 <button onclick="tallenna()">💾 Tallenna</button>
 <button onclick="teePDF()">📄 PDF</button>
-<button onclick="obdDemo()">🔵 OBD (demo)</button>
+<button onclick="obdDemo()">🔵 OBD demo</button>
 
 <div class="card">
   <h2 id="status">-</h2>
@@ -100,8 +56,8 @@ function laske(){
  let max = parseFloat(document.getElementById("max").value);
  let min = parseFloat(document.getElementById("min").value);
 
- if(isNaN(max)||isNaN(min)) {
-   alert("Syötä arvot");
+ if(isNaN(max)||isNaN(min)){
+   alert("Syötä arvot!");
    return;
  }
 
@@ -122,11 +78,7 @@ function laske(){
  document.getElementById("details").innerText =
  "DELTA: " + delta.toFixed(3) + " V";
 
- window.lastData = {
-   soh:soh,
-   delta:delta,
-   date:new Date().toLocaleTimeString()
- };
+ window.lastData = {soh,delta,date:new Date().toLocaleString()};
 }
 
 function tallenna(){
@@ -145,7 +97,7 @@ function drawChart(){
 
  if(window.chart) window.chart.destroy();
 
- window.chart = new Chart(ctx, {
+ window.chart = new Chart(ctx,{
    type:"line",
    data:{
      labels: historyData.map(d=>d.date),
@@ -163,19 +115,18 @@ function teePDF(){
    return;
  }
 
- let content = `
- EV AKKURAPORTTI
+ const { jsPDF } = window.jspdf;
+ let doc = new jsPDF();
 
- SOH: ${window.lastData.soh.toFixed(1)}%
- DELTA: ${window.lastData.delta.toFixed(3)} V
- Aika: ${window.lastData.date}
- `;
+ doc.setFontSize(18);
+ doc.text("EV AKKURAPORTTI", 20, 20);
 
- let blob = new Blob([content], {type:"text/plain"});
- let a = document.createElement("a");
- a.href = URL.createObjectURL(blob);
- a.download = "ev_raportti.txt";
- a.click();
+ doc.setFontSize(12);
+ doc.text("SOH: " + window.lastData.soh.toFixed(1) + "%", 20, 40);
+ doc.text("DELTA: " + window.lastData.delta.toFixed(3) + " V", 20, 50);
+ doc.text("Aika: " + window.lastData.date, 20, 60);
+
+ doc.save("EV_raportti.pdf");
 }
 
 function obdDemo(){
