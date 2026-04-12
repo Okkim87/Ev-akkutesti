@@ -6,17 +6,42 @@
 
 <title>EV Akkuraportti PRO+</title>
 
+<!-- Chart -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf"></script>
+
+<!-- PDF FIXED -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
 body{background:#0d0d0d;color:white;font-family:sans-serif;text-align:center;}
 .container{max-width:400px;margin:auto;}
-input{width:90%;padding:15px;margin:10px;font-size:18px;border-radius:10px;border:none;background:#1c1c1c;color:white;}
-button{width:90%;padding:15px;margin:10px;font-size:18px;border-radius:10px;border:none;background:#4caf50;color:white;}
-.card{background:#1c1c1c;padding:20px;border-radius:15px;margin-top:20px;}
-.bar{height:20px;background:#333;border-radius:10px;overflow:hidden;}
-.fill{height:100%;width:0%;background:#4caf50;}
+
+input{
+ width:90%;padding:15px;margin:10px;
+ font-size:18px;border-radius:10px;
+ border:none;background:#1c1c1c;color:white;
+}
+
+button{
+ width:90%;padding:15px;margin:10px;
+ font-size:18px;border-radius:10px;
+ border:none;background:#4caf50;color:white;
+}
+
+.card{
+ background:#1c1c1c;padding:20px;
+ border-radius:15px;margin-top:20px;
+}
+
+.bar{
+ height:20px;background:#333;
+ border-radius:10px;overflow:hidden;
+}
+
+.fill{
+ height:100%;width:0%;
+ background:#4caf50;
+}
 </style>
 </head>
 
@@ -52,6 +77,7 @@ button{width:90%;padding:15px;margin:10px;font-size:18px;border-radius:10px;bord
 <script>
 let historyData = JSON.parse(localStorage.getItem("evdata") || "[]");
 
+// ===== ANALYYSI =====
 function laske(){
  let max = parseFloat(document.getElementById("max").value);
  let min = parseFloat(document.getElementById("min").value);
@@ -78,9 +104,14 @@ function laske(){
  document.getElementById("details").innerText =
  "DELTA: " + delta.toFixed(3) + " V";
 
- window.lastData = {soh,delta,date:new Date().toLocaleString()};
+ window.lastData = {
+   soh:soh,
+   delta:delta,
+   date:new Date().toLocaleString()
+ };
 }
 
+// ===== TALLENNUS =====
 function tallenna(){
  if(!window.lastData){
    alert("Laske ensin!");
@@ -89,9 +120,12 @@ function tallenna(){
 
  historyData.push(window.lastData);
  localStorage.setItem("evdata", JSON.stringify(historyData));
+
+ alert("Tallennettu ✔");
  drawChart();
 }
 
+// ===== GRAAFI =====
 function drawChart(){
  let ctx = document.getElementById("chart");
 
@@ -109,14 +143,14 @@ function drawChart(){
  });
 }
 
+// ===== PDF =====
 function teePDF(){
  if(!window.lastData){
    alert("Laske ensin!");
    return;
  }
 
- const { jsPDF } = window.jspdf;
- let doc = new jsPDF();
+ const doc = new window.jspdf.jsPDF();
 
  doc.setFontSize(18);
  doc.text("EV AKKURAPORTTI", 20, 20);
@@ -129,6 +163,7 @@ function teePDF(){
  doc.save("EV_raportti.pdf");
 }
 
+// ===== OBD DEMO =====
 function obdDemo(){
  let max = 4.1 + Math.random()*0.02;
  let min = 4.05 + Math.random()*0.02;
@@ -139,6 +174,7 @@ function obdDemo(){
  laske();
 }
 
+// INIT
 drawChart();
 </script>
 
