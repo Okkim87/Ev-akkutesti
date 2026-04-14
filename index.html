@@ -111,16 +111,18 @@ function laske(){
 
  document.getElementById("details").innerText =
  "DELTA: " + delta.toFixed(3) + " V\n" +
+ "Kennot löydetty: " + window.cellCount + "\n" +
  "Luotettavuus: " + reliability + "\n" + note;
 
  window.lastData = {
    soh, delta, soc:isNaN(soc)?null:soc,
    reliability,
+   cells: window.cellCount,
    date:new Date().toLocaleString()
  };
 }
 
-// ===== CSV =====
+// ===== CSV PARSER (FIXED) =====
 function lueOBD(){
  let file = document.getElementById("fileInput").files[0];
  if(!file) return;
@@ -128,38 +130,54 @@ function lueOBD(){
  let reader = new FileReader();
 
  reader.onload = function(e){
-   let lines = e.target.result.split("\n");
-   let last = lines[lines.length-1].split(",");
-
-   let volts=[];
-   last.forEach(p=>{
-     let v=parseFloat(p);
-     if(v>2&&v<5) volts.push(v);
-     if(v>=0&&v<=100) document.getElementById("soc").value=v;
-   });
-
-   if(volts.length<2){alert("Ei dataa");return;}
-
-   maxEl().value = Math.max(...volts).toFixed(3);
-   minEl().value = Math.min(...volts).toFixed(3);
-
-   laske();
+   parseText(e.target.result);
  };
 
  reader.readAsText(file);
 }
 
-// ===== COPY DATA =====
+// ===== UNIVERSAL PARSER =====
 function parseOBD(){
  let text = document.getElementById("obdData").value;
- let nums = text.match(/\d+\.\d+/g);
+ parseText(text);
+}
 
- if(!nums){alert("Ei dataa");return;}
+function parseText(text){
+ let matches = text.match(/(\d+[\.,]\d+)/g);
 
- let volts = nums.map(n=>parseFloat(n)).filter(v=>v>2&&v<5);
+ if(!matches){
+   alert("Ei dataa");
+   return;
+ }
+
+ let volts = [];
+ let socFound = null;
+
+ matches.forEach(m=>{
+   let v = parseFloat(m.replace(",", "."));
+
+   if(v > 2.5 && v < 5){
+     volts.push(v);
+   }
+
+   if(v >= 0 && v <= 100 && socFound === null){
+     socFound = v;
+   }
+ });
+
+ if(volts.length < 2){
+   alert("Ei löytynyt kennojännitteitä");
+   return;
+ }
+
+ window.cellCount = volts.length;
 
  maxEl().value = Math.max(...volts).toFixed(3);
  minEl().value = Math.min(...volts).toFixed(3);
+
+ if(socFound !== null){
+   document.getElementById("soc").value = socFound;
+ }
 
  laske();
 }
@@ -170,8 +188,8 @@ function tallenna(){
 
  historyData.push(window.lastData);
  localStorage.setItem("evdata", JSON.stringify(historyData));
- alert("Tallennettu ✔");
 
+ alert("Tallennettu ✔");
  drawChart();
 }
 
@@ -187,13 +205,14 @@ function drawChart(){
      labels:historyData.map(d=>d.date),
      datasets:[{
        label:"SOH %",
-       data:historyData.map(d=>d.soh)
+       data:historyData.map(d=>d.soh),
+       borderWidth:2
      }]
    }
  });
 }
 
-// ===== PDF (AVILOO STYLE) =====
+// ===== PDF PRO =====
 function teePDF(){
  if(!window.lastData){alert("Laske ensin");return;}
 
@@ -201,36 +220,55 @@ function teePDF(){
 
  // HEADER
  doc.setFillColor(0,0,0);
- doc.rect(0,0,210,25,"F");
- doc.setTextColor(255,255,255);
- doc.setFontSize(14);
- doc.text("BATTERY HEALTH CERTIFICATE", 15, 15);
+ doc.rect(0,0,210,30,"F");
 
- // DATA
+ doc.setTextColor(255,255,255);
+ doc.setFontSize(16);
+ doc.text("BATTERY HEALTH CERTIFICATE", 15,18);
+
+ // BLUE STRIP
+ doc.setFillColor(70,130,180);
+ doc.rect(0,30,210,15,"F");
+
+ doc.setFontSize(12);
+ doc.text(window.lastData.soh.toFixed(1)+"%", 160,40);
+ doc.text("Range est. 450 km", 15,40);
+
+ // TITLE
  doc.setTextColor(0,0,0);
+ doc.setFontSize(18);
+ doc.text("AKKUSERFIKAATTI", 15,60);
+
  doc.setFontSize(12);
 
- doc.text("SOH: "+window.lastData.soh.toFixed(1)+"%", 15,40);
- doc.text("Delta: "+window.lastData.delta.toFixed(3)+" V", 15,50);
+ doc.text("SOH: "+window.lastData.soh.toFixed(1)+" %", 15,80);
+ doc.text("Delta: "+window.lastData.delta.toFixed(3)+" V", 15,90);
+ doc.text("Kennot: "+window.lastData.cells, 15,100);
 
  if(window.lastData.soc!==null){
-   doc.text("SOC: "+window.lastData.soc+"%", 15,60);
+   doc.text("SOC: "+window.lastData.soc+"%", 15,110);
  }
 
- doc.text("Luotettavuus: "+window.lastData.reliability, 15,70);
+ doc.text("Luotettavuus: "+window.lastData.reliability, 15,120);
 
  // BAR
  let w = window.lastData.soh * 1.5;
- doc.setFillColor(200,200,200);
- doc.rect(15,80,150,10);
- doc.setFillColor(0,200,83);
- doc.rect(15,80,w,10);
+ doc.setFillColor(220,220,220);
+ doc.rect(15,135,150,10);
+ doc.setFillColor(76,175,80);
+ doc.rect(15,135,w,10);
+
+ // GRAPH IMAGE
+ let chart = document.getElementById("chart");
+ let img = chart.toDataURL("image/png");
+
+ doc.addImage(img,"PNG",15,155,180,60);
 
  // FOOTER
  doc.setFontSize(8);
- doc.text("Testaaja: autosahkoapu.fi", 15,110);
- doc.text("Mittaus perustuu kennokohtaiseen jannite-eroon mittaushetkella.",15,115);
- doc.text("Raportti on suuntaa-antava eika vastaa valmistajan diagnostiikkaa.",15,120);
+ doc.text("Testaaja: autosahkoapu.fi", 15,230);
+ doc.text("Mittaus perustuu kennokohtaiseen jannite-eroon mittaushetkella.",15,235);
+ doc.text("Raportti on suuntaa-antava eika vastaa valmistajan diagnostiikkaa.",15,240);
 
  doc.save("EV_Certificate.pdf");
 }
