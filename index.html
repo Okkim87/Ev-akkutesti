@@ -184,52 +184,61 @@ function teePDF(){
  let d = window.lastData;
  let c = hexToRgb(d.color);
 
- // TOP BAR
- doc.setFillColor(0,150,200);
- doc.rect(0,0,210,25,"F");
+ // ===== HEADER =====
+ doc.setFillColor(20,20,20);
+ doc.rect(0,0,210,30,"F");
+
+ doc.setTextColor(255,255,255);
+ doc.setFontSize(18);
+ doc.text("BATTERY HEALTH CERTIFICATE", 20,18);
+
+ doc.setFontSize(10);
+ doc.text("EV Akkuraportti PRO+", 20,25);
+
+ // ===== TOP INFO BAR =====
+ doc.setFillColor(60,140,200);
+ doc.rect(0,30,210,20,"F");
+
+ // Range fake (näyttävä lisä)
+ let range = Math.round(300 + (d.soh/100)*150);
 
  doc.setTextColor(255,255,255);
  doc.setFontSize(16);
- doc.text("BATTERY HEALTH CERTIFICATE", 20,16);
+ doc.text(range + " km", 20,43);
 
- // SOH
+ doc.text(d.soh.toFixed(1) + "%", 160,43);
+
+ // ===== TITLE =====
  doc.setTextColor(0,0,0);
- doc.setFontSize(28);
- doc.text(d.soh.toFixed(1)+"%", 150,20);
-
- // RANGE
- let range = Math.round(300 + (d.soh/100)*150);
- doc.setFontSize(20);
- doc.text(range+" km", 20,45);
-
- // TITLE
  doc.setFontSize(22);
  doc.text("AKKUSERFIKAATTI", 20,65);
 
- // LEFT
- doc.setFontSize(12);
+ // ===== LEFT COLUMN =====
+ doc.setFontSize(11);
  doc.text("Ajoneuvon tiedot", 20,80);
 
  doc.text("Auto:", 20,90);
- doc.text(d.car, 60,90);
+ doc.text(d.car || "-", 60,90);
 
  doc.text("VIN:", 20,100);
- doc.text(d.vin, 60,100);
+ doc.text(d.vin || "-", 60,100);
 
  doc.text("Asiakas:", 20,110);
- doc.text(d.owner, 60,110);
+ doc.text(d.owner || "-", 60,110);
 
  doc.text("Päivä:", 20,120);
  doc.text(d.date, 60,120);
 
- // RIGHT
+ // ===== RIGHT COLUMN =====
  doc.text("Testitulokset", 120,80);
 
  doc.text("SOH:", 120,90);
- doc.text(d.soh.toFixed(1)+" %", 160,90);
+ doc.setFontSize(14);
+ doc.text(d.soh.toFixed(1) + " %", 160,90);
 
+ doc.setFontSize(11);
  doc.text("Delta:", 120,100);
- doc.text(d.delta.toFixed(3)+" V", 160,100);
+ doc.text(d.delta.toFixed(3) + " V", 160,100);
 
  doc.text("Status:", 120,110);
  doc.setTextColor(c.r,c.g,c.b);
@@ -237,20 +246,54 @@ function teePDF(){
 
  doc.setTextColor(0,0,0);
 
- // BAR
- doc.rect(20,135,170,10);
- doc.setFillColor(c.r,c.g,c.b);
- doc.rect(20,135,(d.soh/100)*170,10,"F");
+ // ===== ISO SOH =====
+ doc.setFontSize(36);
+ doc.text(d.soh.toFixed(1) + "%", 20,155);
 
- // GRAAFI
- if(historyData.length > 0){
+ doc.setFontSize(14);
+ doc.setTextColor(c.r,c.g,c.b);
+ doc.text(d.status.toUpperCase(), 20,165);
+
+ doc.setTextColor(0,0,0);
+
+ // ===== PROGRESS BAR =====
+ doc.setDrawColor(200);
+ doc.rect(20,175,170,10);
+
+ doc.setFillColor(c.r,c.g,c.b);
+ doc.rect(20,175,(d.soh/100)*170,10,"F");
+
+ doc.setFontSize(10);
+ doc.text("Delta: " + d.delta.toFixed(3) + " V", 20,195);
+
+ // ===== GRAAFI =====
+ if(historyData.length > 1){
    let canvas = document.getElementById("chart");
    let img = canvas.toDataURL("image/png");
 
-   doc.text("Historia", 20,160);
-   doc.addImage(img,"PNG",15,165,180,60);
+   doc.text("Historia", 20,210);
+   doc.addImage(img,"PNG",20,215,170,50);
  }
 
+ // ===== FOOTER =====
+ doc.setFontSize(9);
+ doc.setTextColor(80);
+
+ doc.text("Testaaja: autosähköapu.fi", 20,275);
+
+ doc.text(
+ "Mittaus perustuu kennokohtaiseen jännite-eroon mittaushetkellä.",
+ 20,282
+ );
+
+ doc.setFontSize(8);
+ doc.text(
+ "Raportti on suuntaa-antava eikä vastaa valmistajan virallista diagnoosia.",
+ 20,288
+ );
+
+ doc.save("EV_Certificate.pdf");
+}
  // TESTAAJA
  doc.setFontSize(10);
  doc.text("Testaaja: autosähköapu.fi", 20,235);
