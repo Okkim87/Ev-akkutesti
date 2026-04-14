@@ -20,7 +20,7 @@ body{
 
 input{
  width:90%;padding:15px;margin:10px;
- font-size:18px;border-radius:10px;
+ font-size:16px;border-radius:10px;
  border:none;background:#1c1c1c;color:white;
 }
 
@@ -61,6 +61,12 @@ canvas{
 
 <h1>🔋 EV Akkuraportti PRO+</h1>
 
+<!-- AUTOTIEDOT -->
+<input id="car" placeholder="Auto (esim. Tesla Model 3)">
+<input id="vin" placeholder="VIN (valinnainen)">
+<input id="owner" placeholder="Asiakas / omistaja">
+
+<!-- MITTAUS -->
 <input id="max" placeholder="Max jännite (4.08)">
 <input id="min" placeholder="Min jännite (4.06)">
 
@@ -88,6 +94,13 @@ canvas{
 
 // ===== DATA =====
 let historyData = JSON.parse(localStorage.getItem("evdata") || "[]");
+
+// ===== AUTOTÄYTTÖ =====
+let savedMeta = JSON.parse(localStorage.getItem("evmeta") || "{}");
+
+if(savedMeta.car) document.getElementById("car").value = savedMeta.car;
+if(savedMeta.vin) document.getElementById("vin").value = savedMeta.vin;
+if(savedMeta.owner) document.getElementById("owner").value = savedMeta.owner;
 
 // ===== ANALYYSI =====
 function laske(){
@@ -122,9 +135,9 @@ function laske(){
    date:new Date().toLocaleString(),
    status:status,
    color:color,
-   car:"-",
-   vin:"-",
-   owner:"-"
+   car: document.getElementById("car").value || "-",
+   vin: document.getElementById("vin").value || "-",
+   owner: document.getElementById("owner").value || "-"
  };
 }
 
@@ -137,6 +150,12 @@ function tallenna(){
 
  historyData.push(window.lastData);
  localStorage.setItem("evdata", JSON.stringify(historyData));
+
+ localStorage.setItem("evmeta", JSON.stringify({
+   car: document.getElementById("car").value,
+   vin: document.getElementById("vin").value,
+   owner: document.getElementById("owner").value
+ }));
 
  alert("Tallennettu ✔");
  drawChart();
@@ -171,7 +190,7 @@ function hexToRgb(hex){
  };
 }
 
-// ===== PDF (UUSI DESIGN) =====
+// ===== PDF =====
 function teePDF(){
  if(!window.lastData){
    alert("Laske ensin!");
