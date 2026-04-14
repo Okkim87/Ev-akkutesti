@@ -10,15 +10,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
-body{
-  background:#0d0d0d;
-  color:white;
-  font-family:sans-serif;
-  text-align:center;
-}
+body{background:#0d0d0d;color:white;font-family:sans-serif;text-align:center;}
 .container{max-width:420px;margin:auto;}
 
-input{
+input, textarea{
  width:90%;padding:15px;margin:10px;
  font-size:16px;border-radius:10px;
  border:none;background:#1c1c1c;color:white;
@@ -26,32 +21,19 @@ input{
 
 button{
  width:90%;padding:15px;margin:10px;
- font-size:18px;border-radius:10px;
+ font-size:16px;border-radius:10px;
  border:none;background:#4caf50;color:white;
 }
 
 .card{
- background:#1c1c1c;
- padding:20px;
- border-radius:15px;
- margin-top:20px;
+ background:#1c1c1c;padding:20px;
+ border-radius:15px;margin-top:20px;
 }
 
-.bar{
- height:20px;background:#333;
- border-radius:10px;
- overflow:hidden;
-}
+.bar{height:20px;background:#333;border-radius:10px;}
+.fill{height:100%;width:0%;background:#4caf50;}
 
-.fill{
- height:100%;
- width:0%;
- background:#4caf50;
-}
-
-canvas{
- margin-top:20px;
-}
+canvas{margin-top:20px;}
 </style>
 </head>
 
@@ -61,14 +43,14 @@ canvas{
 
 <h1>🔋 EV Akkuraportti PRO+</h1>
 
-<!-- AUTOTIEDOT -->
-<input id="car" placeholder="Auto (esim. Tesla Model 3)">
-<input id="vin" placeholder="VIN (valinnainen)">
-<input id="owner" placeholder="Asiakas / omistaja">
+<input id="max" placeholder="Max jännite">
+<input id="min" placeholder="Min jännite">
+<input id="soc" placeholder="SOC % (valinnainen)">
 
-<!-- MITTAUS -->
-<input id="max" placeholder="Max jännite (4.08)">
-<input id="min" placeholder="Min jännite (4.06)">
+<input type="file" id="fileInput" accept=".csv" onchange="lueOBD()">
+
+<textarea id="obdData" placeholder="TAI liitä OBD data tähän"></textarea>
+<button onclick="parseOBD()">📋 Lue liitetty data</button>
 
 <button onclick="laske()">Analysoi</button>
 <button onclick="tallenna()">💾 Tallenna</button>
@@ -92,23 +74,16 @@ canvas{
 
 <script>
 
-// ===== DATA =====
 let historyData = JSON.parse(localStorage.getItem("evdata") || "[]");
-
-// ===== AUTOTÄYTTÖ =====
-let savedMeta = JSON.parse(localStorage.getItem("evmeta") || "{}");
-
-if(savedMeta.car) document.getElementById("car").value = savedMeta.car;
-if(savedMeta.vin) document.getElementById("vin").value = savedMeta.vin;
-if(savedMeta.owner) document.getElementById("owner").value = savedMeta.owner;
 
 // ===== ANALYYSI =====
 function laske(){
- let max = parseFloat(document.getElementById("max").value);
- let min = parseFloat(document.getElementById("min").value);
+ let max = parseFloat(maxEl().value);
+ let min = parseFloat(minEl().value);
+ let soc = parseFloat(document.getElementById("soc").value);
 
  if(isNaN(max)||isNaN(min)){
-   alert("Syötä arvot!");
+   alert("Syötä max ja min!");
    return;
  }
 
@@ -126,42 +101,81 @@ function laske(){
  fill.style.width = soh+"%";
  fill.style.background = color;
 
+ let reliability = "Normaali";
+ let note = "";
+
+ if(!isNaN(soc)){
+   if(soc > 80){reliability="Korkea";note="Mittaus tarkempi";}
+   else if(soc < 20){reliability="Heikompi";note="Suositus >50%";}
+ }
+
  document.getElementById("details").innerText =
- "DELTA: " + delta.toFixed(3) + " V";
+ "DELTA: " + delta.toFixed(3) + " V\n" +
+ "Luotettavuus: " + reliability + "\n" + note;
 
  window.lastData = {
-   soh:soh,
-   delta:delta,
-   date:new Date().toLocaleString(),
-   status:status,
-   color:color,
-   car: document.getElementById("car").value || "-",
-   vin: document.getElementById("vin").value || "-",
-   owner: document.getElementById("owner").value || "-"
+   soh, delta, soc:isNaN(soc)?null:soc,
+   reliability,
+   date:new Date().toLocaleString()
  };
 }
 
-// ===== TALLENNUS =====
+// ===== CSV =====
+function lueOBD(){
+ let file = document.getElementById("fileInput").files[0];
+ if(!file) return;
+
+ let reader = new FileReader();
+
+ reader.onload = function(e){
+   let lines = e.target.result.split("\n");
+   let last = lines[lines.length-1].split(",");
+
+   let volts=[];
+   last.forEach(p=>{
+     let v=parseFloat(p);
+     if(v>2&&v<5) volts.push(v);
+     if(v>=0&&v<=100) document.getElementById("soc").value=v;
+   });
+
+   if(volts.length<2){alert("Ei dataa");return;}
+
+   maxEl().value = Math.max(...volts).toFixed(3);
+   minEl().value = Math.min(...volts).toFixed(3);
+
+   laske();
+ };
+
+ reader.readAsText(file);
+}
+
+// ===== COPY DATA =====
+function parseOBD(){
+ let text = document.getElementById("obdData").value;
+ let nums = text.match(/\d+\.\d+/g);
+
+ if(!nums){alert("Ei dataa");return;}
+
+ let volts = nums.map(n=>parseFloat(n)).filter(v=>v>2&&v<5);
+
+ maxEl().value = Math.max(...volts).toFixed(3);
+ minEl().value = Math.min(...volts).toFixed(3);
+
+ laske();
+}
+
+// ===== SAVE =====
 function tallenna(){
- if(!window.lastData){
-   alert("Laske ensin!");
-   return;
- }
+ if(!window.lastData){alert("Laske ensin");return;}
 
  historyData.push(window.lastData);
  localStorage.setItem("evdata", JSON.stringify(historyData));
-
- localStorage.setItem("evmeta", JSON.stringify({
-   car: document.getElementById("car").value,
-   vin: document.getElementById("vin").value,
-   owner: document.getElementById("owner").value
- }));
-
  alert("Tallennettu ✔");
+
  drawChart();
 }
 
-// ===== GRAAFI =====
+// ===== CHART =====
 function drawChart(){
  let ctx = document.getElementById("chart");
 
@@ -170,158 +184,72 @@ function drawChart(){
  window.chart = new Chart(ctx,{
    type:"line",
    data:{
-     labels: historyData.map(d=>d.date),
+     labels:historyData.map(d=>d.date),
      datasets:[{
        label:"SOH %",
-       data: historyData.map(d=>d.soh),
-       borderWidth:2
+       data:historyData.map(d=>d.soh)
      }]
    }
  });
 }
 
-// ===== HEX → RGB =====
-function hexToRgb(hex){
- let bigint = parseInt(hex.replace("#",""),16);
- return {
-   r:(bigint>>16)&255,
-   g:(bigint>>8)&255,
-   b:bigint&255
- };
-}
-
-// ===== PDF =====
+// ===== PDF (AVILOO STYLE) =====
 function teePDF(){
- if(!window.lastData){
-   alert("Laske ensin!");
-   return;
- }
+ if(!window.lastData){alert("Laske ensin");return;}
 
- const { jsPDF } = window.jspdf;
- const doc = new jsPDF();
-
- let d = window.lastData;
- let c = hexToRgb(d.color);
+ const doc = new window.jspdf.jsPDF();
 
  // HEADER
- doc.setFillColor(20,20,20);
- doc.rect(0,0,210,30,"F");
-
+ doc.setFillColor(0,0,0);
+ doc.rect(0,0,210,25,"F");
  doc.setTextColor(255,255,255);
- doc.setFontSize(18);
- doc.text("BATTERY HEALTH CERTIFICATE", 20,18);
-
- doc.setFontSize(10);
- doc.text("EV Akkuraportti PRO+", 20,25);
-
- // TOP BAR
- doc.setFillColor(60,140,200);
- doc.rect(0,30,210,20,"F");
-
- let range = Math.round(300 + (d.soh/100)*150);
-
- doc.setTextColor(255,255,255);
- doc.setFontSize(16);
- doc.text(range + " km", 20,43);
- doc.text(d.soh.toFixed(1) + "%", 160,43);
-
- // TITLE
- doc.setTextColor(0,0,0);
- doc.setFontSize(22);
- doc.text("AKKUSERFIKAATTI", 20,65);
-
- // LEFT
- doc.setFontSize(11);
- doc.text("Ajoneuvon tiedot", 20,80);
-
- doc.text("Auto:", 20,90);
- doc.text(d.car, 60,90);
-
- doc.text("VIN:", 20,100);
- doc.text(d.vin, 60,100);
-
- doc.text("Asiakas:", 20,110);
- doc.text(d.owner, 60,110);
-
- doc.text("Päivä:", 20,120);
- doc.text(d.date, 60,120);
-
- // RIGHT
- doc.text("Testitulokset", 120,80);
-
- doc.text("SOH:", 120,90);
  doc.setFontSize(14);
- doc.text(d.soh.toFixed(1) + " %", 160,90);
+ doc.text("BATTERY HEALTH CERTIFICATE", 15, 15);
 
- doc.setFontSize(11);
- doc.text("Delta:", 120,100);
- doc.text(d.delta.toFixed(3) + " V", 160,100);
-
- doc.text("Status:", 120,110);
- doc.setTextColor(c.r,c.g,c.b);
- doc.text(d.status, 160,110);
-
+ // DATA
  doc.setTextColor(0,0,0);
+ doc.setFontSize(12);
 
- // ISO SOH
- doc.setFontSize(36);
- doc.text(d.soh.toFixed(1) + "%", 20,155);
+ doc.text("SOH: "+window.lastData.soh.toFixed(1)+"%", 15,40);
+ doc.text("Delta: "+window.lastData.delta.toFixed(3)+" V", 15,50);
 
- doc.setFontSize(14);
- doc.setTextColor(c.r,c.g,c.b);
- doc.text(d.status.toUpperCase(), 20,165);
-
- doc.setTextColor(0,0,0);
-
- // BAR
- doc.rect(20,175,170,10);
- doc.setFillColor(c.r,c.g,c.b);
- doc.rect(20,175,(d.soh/100)*170,10,"F");
-
- doc.setFontSize(10);
- doc.text("Delta: " + d.delta.toFixed(3) + " V", 20,195);
-
- // GRAAFI
- if(historyData.length > 1){
-   let canvas = document.getElementById("chart");
-   let img = canvas.toDataURL("image/png");
-
-   doc.text("Historia", 20,210);
-   doc.addImage(img,"PNG",20,215,170,50);
+ if(window.lastData.soc!==null){
+   doc.text("SOC: "+window.lastData.soc+"%", 15,60);
  }
 
+ doc.text("Luotettavuus: "+window.lastData.reliability, 15,70);
+
+ // BAR
+ let w = window.lastData.soh * 1.5;
+ doc.setFillColor(200,200,200);
+ doc.rect(15,80,150,10);
+ doc.setFillColor(0,200,83);
+ doc.rect(15,80,w,10);
+
  // FOOTER
- doc.setFontSize(9);
- doc.setTextColor(80);
-
- doc.text("Testaaja: autosähköapu.fi", 20,275);
-
- doc.text(
- "Mittaus perustuu kennokohtaiseen jännite-eroon mittaushetkellä.",
- 20,282
- );
-
  doc.setFontSize(8);
- doc.text(
- "Raportti on suuntaa-antava eikä vastaa valmistajan virallista diagnoosia.",
- 20,288
- );
+ doc.text("Testaaja: autosahkoapu.fi", 15,110);
+ doc.text("Mittaus perustuu kennokohtaiseen jannite-eroon mittaushetkella.",15,115);
+ doc.text("Raportti on suuntaa-antava eika vastaa valmistajan diagnostiikkaa.",15,120);
 
  doc.save("EV_Certificate.pdf");
 }
 
-// ===== OBD DEMO =====
+// ===== DEMO =====
 function obdDemo(){
- let max = 4.1 + Math.random()*0.02;
- let min = 4.05 + Math.random()*0.02;
+ let max=4.1+Math.random()*0.02;
+ let min=4.05+Math.random()*0.02;
 
- document.getElementById("max").value = max.toFixed(3);
- document.getElementById("min").value = min.toFixed(3);
+ maxEl().value=max.toFixed(3);
+ minEl().value=min.toFixed(3);
 
  laske();
 }
 
-// INIT
+// helpers
+function maxEl(){return document.getElementById("max");}
+function minEl(){return document.getElementById("min");}
+
 drawChart();
 
 </script>
