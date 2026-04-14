@@ -87,6 +87,11 @@ function laske(){
    return;
  }
 
+ if(max > 4.3 || min < 3.0){
+   alert("Arvot eivät näytä kennolta!");
+   return;
+ }
+
  let delta = max - min;
  let soh = 100 - (delta * 1200);
  soh = Math.max(0, Math.min(100, soh));
@@ -101,28 +106,15 @@ function laske(){
  fill.style.width = soh+"%";
  fill.style.background = color;
 
- let reliability = "Normaali";
- let note = "";
-
- if(!isNaN(soc)){
-   if(soc > 80){reliability="Korkea";note="Mittaus tarkempi";}
-   else if(soc < 20){reliability="Heikompi";note="Suositus >50%";}
- }
-
  document.getElementById("details").innerText =
- "DELTA: " + delta.toFixed(3) + " V\n" +
- "Kennot löydetty: " + window.cellCount + "\n" +
- "Luotettavuus: " + reliability + "\n" + note;
+ "DELTA: " + delta.toFixed(3) + " V\nKennot: " + window.cellCount;
 
  window.lastData = {
-   soh, delta, soc:isNaN(soc)?null:soc,
-   reliability,
-   cells: window.cellCount,
-   date:new Date().toLocaleString()
+   soh, delta, date:new Date().toLocaleString()
  };
 }
 
-// ===== CSV PARSER (FIXED) =====
+// ===== CSV AUTO DETECTION =====
 function lueOBD(){
  let file = document.getElementById("fileInput").files[0];
  if(!file) return;
@@ -130,43 +122,73 @@ function lueOBD(){
  let reader = new FileReader();
 
  reader.onload = function(e){
-   parseText(e.target.result);
+   detectAndParse(e.target.result);
  };
 
  reader.readAsText(file);
 }
 
-// ===== UNIVERSAL PARSER =====
 function parseOBD(){
  let text = document.getElementById("obdData").value;
- parseText(text);
+ detectAndParse(text);
 }
 
-function parseText(text){
- let matches = text.match(/(\d+[\.,]\d+)/g);
+// ===== SMART PARSER =====
+function detectAndParse(text){
 
- if(!matches){
-   alert("Ei dataa");
+ let rows = text.split("\n");
+ let header = rows[0].toLowerCase();
+
+ let cols = header.split(/[,;]+/);
+
+ let voltageIndexes = [];
+ let socIndex = null;
+
+ cols.forEach((col,i)=>{
+
+   // tunnistaa kennojännitteet
+   if(col.includes("cell") || col.includes("volt") || col.includes("v")){
+     voltageIndexes.push(i);
+   }
+
+   // SOC
+   if(col.includes("soc") || col.includes("state of charge")){
+     socIndex = i;
+   }
+
+ });
+
+ // fallback jos ei löytynyt otsikoista
+ if(voltageIndexes.length === 0){
+   fallbackParser(text);
    return;
  }
 
  let volts = [];
- let socFound = null;
+ let soc = null;
 
- matches.forEach(m=>{
-   let v = parseFloat(m.replace(",", "."));
+ rows.slice(1).forEach(row=>{
 
-   if(v > 2.5 && v < 5){
-     volts.push(v);
+   let data = row.split(/[,;]+/);
+
+   voltageIndexes.forEach(i=>{
+     let v = parseFloat(data[i]);
+     if(v > 3.0 && v < 4.3){
+       volts.push(v);
+     }
+   });
+
+   if(socIndex !== null){
+     let s = parseFloat(data[socIndex]);
+     if(s >= 0 && s <= 100){
+       soc = s;
+     }
    }
 
-   if(v >= 0 && v <= 100 && socFound === null){
-     socFound = v;
-   }
  });
 
  if(volts.length < 2){
-   alert("Ei löytynyt kennojännitteitä");
+   fallbackParser(text);
    return;
  }
 
@@ -175,9 +197,32 @@ function parseText(text){
  maxEl().value = Math.max(...volts).toFixed(3);
  minEl().value = Math.min(...volts).toFixed(3);
 
- if(socFound !== null){
-   document.getElementById("soc").value = socFound;
+ if(soc !== null){
+   document.getElementById("soc").value = soc;
  }
+
+ laske();
+}
+
+// ===== FALLBACK =====
+function fallbackParser(text){
+
+ let matches = text.match(/\d+[\.,]\d+/g);
+ if(!matches){alert("Ei dataa");return;}
+
+ let volts = matches
+   .map(v=>parseFloat(v.replace(",", ".")))
+   .filter(v=>v > 3.0 && v < 4.3);
+
+ if(volts.length < 2){
+   alert("Ei löytynyt kennodataa");
+   return;
+ }
+
+ window.cellCount = volts.length;
+
+ maxEl().value = Math.max(...volts).toFixed(3);
+ minEl().value = Math.min(...volts).toFixed(3);
 
  laske();
 }
@@ -205,70 +250,36 @@ function drawChart(){
      labels:historyData.map(d=>d.date),
      datasets:[{
        label:"SOH %",
-       data:historyData.map(d=>d.soh),
-       borderWidth:2
+       data:historyData.map(d=>d.soh)
      }]
    }
  });
 }
 
-// ===== PDF PRO =====
+// ===== PDF =====
 function teePDF(){
  if(!window.lastData){alert("Laske ensin");return;}
 
  const doc = new window.jspdf.jsPDF();
 
- // HEADER
  doc.setFillColor(0,0,0);
- doc.rect(0,0,210,30,"F");
+ doc.rect(0,0,210,25,"F");
 
  doc.setTextColor(255,255,255);
- doc.setFontSize(16);
- doc.text("BATTERY HEALTH CERTIFICATE", 15,18);
+ doc.text("BATTERY HEALTH CERTIFICATE", 15,15);
 
- // BLUE STRIP
- doc.setFillColor(70,130,180);
- doc.rect(0,30,210,15,"F");
-
- doc.setFontSize(12);
- doc.text(window.lastData.soh.toFixed(1)+"%", 160,40);
- doc.text("Range est. 450 km", 15,40);
-
- // TITLE
  doc.setTextColor(0,0,0);
- doc.setFontSize(18);
- doc.text("AKKUSERFIKAATTI", 15,60);
+ doc.text("SOH: "+window.lastData.soh.toFixed(1)+"%", 15,40);
+ doc.text("Delta: "+window.lastData.delta.toFixed(3)+" V", 15,50);
 
- doc.setFontSize(12);
+ let barWidth = 150;
+ let filled = (window.lastData.soh / 100) * barWidth;
 
- doc.text("SOH: "+window.lastData.soh.toFixed(1)+" %", 15,80);
- doc.text("Delta: "+window.lastData.delta.toFixed(3)+" V", 15,90);
- doc.text("Kennot: "+window.lastData.cells, 15,100);
+ doc.setFillColor(230,230,230);
+ doc.rect(15,70,barWidth,10);
 
- if(window.lastData.soc!==null){
-   doc.text("SOC: "+window.lastData.soc+"%", 15,110);
- }
-
- doc.text("Luotettavuus: "+window.lastData.reliability, 15,120);
-
- // BAR
- let w = window.lastData.soh * 1.5;
- doc.setFillColor(220,220,220);
- doc.rect(15,135,150,10);
  doc.setFillColor(76,175,80);
- doc.rect(15,135,w,10);
-
- // GRAPH IMAGE
- let chart = document.getElementById("chart");
- let img = chart.toDataURL("image/png");
-
- doc.addImage(img,"PNG",15,155,180,60);
-
- // FOOTER
- doc.setFontSize(8);
- doc.text("Testaaja: autosahkoapu.fi", 15,230);
- doc.text("Mittaus perustuu kennokohtaiseen jannite-eroon mittaushetkella.",15,235);
- doc.text("Raportti on suuntaa-antava eika vastaa valmistajan diagnostiikkaa.",15,240);
+ doc.rect(15,70,filled,10);
 
  doc.save("EV_Certificate.pdf");
 }
@@ -284,7 +295,6 @@ function obdDemo(){
  laske();
 }
 
-// helpers
 function maxEl(){return document.getElementById("max");}
 function minEl(){return document.getElementById("min");}
 
