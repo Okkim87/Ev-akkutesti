@@ -1,306 +1,282 @@
 <!DOCTYPE html>
 <html lang="fi">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>EV Akkuraportti PRO+</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-<style>
-body{background:#0d0d0d;color:white;font-family:sans-serif;text-align:center;}
-.container{max-width:420px;margin:auto;}
-
-input, textarea{
- width:90%;padding:15px;margin:10px;
- font-size:16px;border-radius:10px;
- border:none;background:#1c1c1c;color:white;
-}
-
-button{
- width:90%;padding:15px;margin:10px;
- font-size:16px;border-radius:10px;
- border:none;background:#4caf50;color:white;
-}
-
-.card{
- background:#1c1c1c;padding:20px;
- border-radius:15px;margin-top:20px;
-}
-
-.bar{height:20px;background:#333;border-radius:10px;}
-.fill{height:100%;width:0%;background:#4caf50;}
-
-canvas{margin-top:20px;}
-</style>
-</head>
-
-<body>
-
-<div class="container">
-
-<h1>🔋 EV Akkuraportti PRO+</h1>
-
-<input id="max" placeholder="Max jännite">
-<input id="min" placeholder="Min jännite">
-<input id="soc" placeholder="SOC % (valinnainen)">
-
-<input type="file" id="fileInput" accept=".csv" onchange="lueOBD()">
-
-<textarea id="obdData" placeholder="TAI liitä OBD data tähän"></textarea>
-<button onclick="parseOBD()">📋 Lue liitetty data</button>
-
-<button onclick="laske()">Analysoi</button>
-<button onclick="tallenna()">💾 Tallenna</button>
-<button onclick="teePDF()">📄 PDF</button>
-<button onclick="obdDemo()">🔵 OBD demo</button>
-
-<div class="card">
-  <h2 id="status">-</h2>
-  <h1 id="soh">--%</h1>
-
-  <div class="bar">
-    <div class="fill" id="fill"></div>
-  </div>
-
-  <p id="details"></p>
-</div>
-
-<canvas id="chart"></canvas>
-
-</div>
-
-<script>
-
-let historyData = JSON.parse(localStorage.getItem("evdata") || "[]");
-
-// ===== ANALYYSI =====
-function laske(){
- let max = parseFloat(maxEl().value);
- let min = parseFloat(minEl().value);
- let soc = parseFloat(document.getElementById("soc").value);
-
- if(isNaN(max)||isNaN(min)){
-   alert("Syötä max ja min!");
-   return;
- }
-
- if(max > 4.3 || min < 3.0){
-   alert("Arvot eivät näytä kennolta!");
-   return;
- }
-
- let delta = max - min;
- let soh = 100 - (delta * 1200);
- soh = Math.max(0, Math.min(100, soh));
-
- let status = soh>90?"Erinomainen":soh>75?"Hyvä":soh>60?"Kohtalainen":"Heikko";
- let color = soh>90?"#00e676":soh>75?"#aeea00":soh>60?"#ffd600":"#ff1744";
-
- document.getElementById("soh").innerText = soh.toFixed(1)+"%";
- document.getElementById("status").innerText = status;
-
- let fill = document.getElementById("fill");
- fill.style.width = soh+"%";
- fill.style.background = color;
-
- document.getElementById("details").innerText =
- "DELTA: " + delta.toFixed(3) + " V\nKennot: " + window.cellCount;
-
- window.lastData = {
-   soh, delta, date:new Date().toLocaleString()
- };
-}
-
-// ===== CSV AUTO DETECTION =====
-function lueOBD(){
- let file = document.getElementById("fileInput").files[0];
- if(!file) return;
-
- let reader = new FileReader();
-
- reader.onload = function(e){
-   detectAndParse(e.target.result);
- };
-
- reader.readAsText(file);
-}
-
-function parseOBD(){
- let text = document.getElementById("obdData").value;
- detectAndParse(text);
-}
-
-// ===== SMART PARSER =====
-function detectAndParse(text){
-
- let rows = text.split("\n");
- let header = rows[0].toLowerCase();
-
- let cols = header.split(/[,;]+/);
-
- let voltageIndexes = [];
- let socIndex = null;
-
- cols.forEach((col,i)=>{
-
-   // tunnistaa kennojännitteet
-   if(col.includes("cell") || col.includes("volt") || col.includes("v")){
-     voltageIndexes.push(i);
-   }
-
-   // SOC
-   if(col.includes("soc") || col.includes("state of charge")){
-     socIndex = i;
-   }
-
- });
-
- // fallback jos ei löytynyt otsikoista
- if(voltageIndexes.length === 0){
-   fallbackParser(text);
-   return;
- }
-
- let volts = [];
- let soc = null;
-
- rows.slice(1).forEach(row=>{
-
-   let data = row.split(/[,;]+/);
-
-   voltageIndexes.forEach(i=>{
-     let v = parseFloat(data[i]);
-     if(v > 3.0 && v < 4.3){
-       volts.push(v);
-     }
-   });
-
-   if(socIndex !== null){
-     let s = parseFloat(data[socIndex]);
-     if(s >= 0 && s <= 100){
-       soc = s;
-     }
-   }
-
- });
-
- if(volts.length < 2){
-   fallbackParser(text);
-   return;
- }
-
- window.cellCount = volts.length;
-
- maxEl().value = Math.max(...volts).toFixed(3);
- minEl().value = Math.min(...volts).toFixed(3);
-
- if(soc !== null){
-   document.getElementById("soc").value = soc;
- }
-
- laske();
-}
-
-// ===== FALLBACK =====
-function fallbackParser(text){
-
- let matches = text.match(/\d+[\.,]\d+/g);
- if(!matches){alert("Ei dataa");return;}
-
- let volts = matches
-   .map(v=>parseFloat(v.replace(",", ".")))
-   .filter(v=>v > 3.0 && v < 4.3);
-
- if(volts.length < 2){
-   alert("Ei löytynyt kennodataa");
-   return;
- }
-
- window.cellCount = volts.length;
-
- maxEl().value = Math.max(...volts).toFixed(3);
- minEl().value = Math.min(...volts).toFixed(3);
-
- laske();
-}
-
-// ===== SAVE =====
-function tallenna(){
- if(!window.lastData){alert("Laske ensin");return;}
-
- historyData.push(window.lastData);
- localStorage.setItem("evdata", JSON.stringify(historyData));
-
- alert("Tallennettu ✔");
- drawChart();
-}
-
-// ===== CHART =====
-function drawChart(){
- let ctx = document.getElementById("chart");
-
- if(window.chart) window.chart.destroy();
-
- window.chart = new Chart(ctx,{
-   type:"line",
-   data:{
-     labels:historyData.map(d=>d.date),
-     datasets:[{
-       label:"SOH %",
-       data:historyData.map(d=>d.soh)
-     }]
-   }
- });
-}
-
-// ===== PDF =====
-function teePDF(){
- if(!window.lastData){alert("Laske ensin");return;}
-
- const doc = new window.jspdf.jsPDF();
-
- doc.setFillColor(0,0,0);
- doc.rect(0,0,210,25,"F");
-
- doc.setTextColor(255,255,255);
- doc.text("BATTERY HEALTH CERTIFICATE", 15,15);
-
- doc.setTextColor(0,0,0);
- doc.text("SOH: "+window.lastData.soh.toFixed(1)+"%", 15,40);
- doc.text("Delta: "+window.lastData.delta.toFixed(3)+" V", 15,50);
-
- let barWidth = 150;
- let filled = (window.lastData.soh / 100) * barWidth;
-
- doc.setFillColor(230,230,230);
- doc.rect(15,70,barWidth,10);
-
- doc.setFillColor(76,175,80);
- doc.rect(15,70,filled,10);
-
- doc.save("EV_Certificate.pdf");
-}
-
-// ===== DEMO =====
-function obdDemo(){
- let max=4.1+Math.random()*0.02;
- let min=4.05+Math.random()*0.02;
-
- maxEl().value=max.toFixed(3);
- minEl().value=min.toFixed(3);
-
- laske();
-}
-
-function maxEl(){return document.getElementById("max");}
-function minEl(){return document.getElementById("min");}
-
-drawChart();
-
-</script>
-
-</body>
-</html>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EV Akkuraportti PRO+</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b0f14;
+      --panel:#121821;
+      --panel2:#182131;
+      --text:#eaf0f7;
+      --muted:#9aa7b5;
+      --line:#263244;
+      --green:#22c55e;
+      --yellow:#facc15;
+      --orange:#fb923c;
+      --red:#ef4444;
+      --blue:#60a5fa;
+      --accent:#4caf50;
+      --accent2:#8b5cf6;
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:
+        radial-gradient(circle at top, rgba(96,165,250,.14), transparent 35%),
+        radial-gradient(circle at 20% 10%, rgba(34,197,94,.10), transparent 25%),
+        var(--bg);
+      color:var(--text);
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    }
+
+    .wrap{
+      max-width:1100px;
+      margin:0 auto;
+      padding:24px;
+    }
+
+    .hero{
+      background:linear-gradient(135deg, rgba(18,24,33,.98), rgba(24,33,49,.92));
+      border:1px solid var(--line);
+      border-radius:24px;
+      padding:24px;
+      box-shadow:0 20px 60px rgba(0,0,0,.25);
+      margin-bottom:18px;
+    }
+
+    .hero-top{
+      display:flex;
+      flex-wrap:wrap;
+      gap:16px;
+      justify-content:space-between;
+      align-items:flex-start;
+    }
+
+    h1{
+      margin:0;
+      font-size:clamp(28px,4vw,44px);
+      line-height:1.05;
+      letter-spacing:-.03em;
+    }
+
+    .subtitle{
+      color:var(--muted);
+      margin-top:10px;
+      max-width:760px;
+      line-height:1.5;
+    }
+
+    .pill-row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:16px;
+    }
+
+    .pill{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+      color:var(--text);
+      padding:8px 12px;
+      border-radius:999px;
+      font-size:13px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns:1.1fr .9fr;
+      gap:18px;
+      align-items:start;
+    }
+
+    .card{
+      background:rgba(18,24,33,.96);
+      border:1px solid var(--line);
+      border-radius:22px;
+      padding:18px;
+      box-shadow:0 16px 40px rgba(0,0,0,.18);
+    }
+
+    .card h2{
+      margin:0 0 12px;
+      font-size:18px;
+    }
+
+    .muted{color:var(--muted)}
+    .small{font-size:13px; line-height:1.5}
+
+    .inputs{
+      display:grid;
+      grid-template-columns:repeat(2, 1fr);
+      gap:12px;
+    }
+
+    .input-group{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+
+    label{
+      font-size:13px;
+      color:var(--muted);
+    }
+
+    input, textarea, select{
+      width:100%;
+      padding:14px 14px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background:#0f1620;
+      color:var(--text);
+      font-size:15px;
+      outline:none;
+    }
+
+    textarea{
+      min-height:150px;
+      resize:vertical;
+      line-height:1.45;
+    }
+
+    input:focus, textarea:focus, select:focus{
+      border-color:#3b82f6;
+      box-shadow:0 0 0 3px rgba(59,130,246,.14);
+    }
+
+    .full{grid-column:1 / -1}
+
+    .btn-row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:12px;
+    }
+
+    button{
+      border:none;
+      border-radius:14px;
+      padding:13px 16px;
+      font-weight:700;
+      color:white;
+      cursor:pointer;
+      background:linear-gradient(135deg, #2563eb, #7c3aed);
+      box-shadow:0 10px 22px rgba(37,99,235,.22);
+      transition:.18s transform ease, .18s opacity ease;
+    }
+
+    button:hover{transform:translateY(-1px)}
+    button.secondary{
+      background:linear-gradient(135deg, #334155, #475569);
+      box-shadow:none;
+    }
+    button.green{
+      background:linear-gradient(135deg, #16a34a, #22c55e);
+      box-shadow:0 10px 22px rgba(34,197,94,.18);
+    }
+    button.orange{
+      background:linear-gradient(135deg, #ea580c, #fb923c);
+      box-shadow:0 10px 22px rgba(251,146,60,.18);
+    }
+
+    .report{
+      display:grid;
+      gap:14px;
+    }
+
+    .scorebox{
+      background:linear-gradient(135deg, rgba(15,22,32,.95), rgba(18,24,33,.85));
+      border:1px solid var(--line);
+      border-radius:22px;
+      padding:18px;
+    }
+
+    .score-top{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      align-items:flex-start;
+      flex-wrap:wrap;
+    }
+
+    .status{
+      font-weight:800;
+      letter-spacing:.02em;
+    }
+
+    .score{
+      font-size:clamp(52px,7vw,74px);
+      font-weight:900;
+      line-height:1;
+      margin:8px 0 0;
+      letter-spacing:-.05em;
+    }
+
+    .progress{
+      height:16px;
+      border-radius:999px;
+      background:#1f2937;
+      overflow:hidden;
+      margin-top:16px;
+      border:1px solid #2b3646;
+    }
+
+    .fill{
+      height:100%;
+      width:0%;
+      border-radius:999px;
+      transition:width .35s ease, background .35s ease;
+      background:var(--accent);
+    }
+
+    .metrics{
+      display:grid;
+      grid-template-columns:repeat(2, 1fr);
+      gap:12px;
+    }
+
+    .metric{
+      background:var(--panel2);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:14px;
+    }
+
+    .metric .k{
+      color:var(--muted);
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      margin-bottom:6px;
+    }
+
+    .metric .v{
+      font-size:20px;
+      font-weight:800;
+    }
+
+    .metric .s{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:4px;
+    }
+
+    .warnings{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+
+    .warn{
+      border-radius:14px;
+      padding:12px 14px;
+      background:#0f1620;
+      border:1px solid var(--line);
+     
